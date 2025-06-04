@@ -4,14 +4,18 @@ import logging
 from typing import Callable
 from django.http import HttpResponseForbidden
 from django.utils.timezone import now
+from django.conf import settings
 
-logger = logging.getLogger(__name__)  # Log blocked attempts
+logger = logging.getLogger(__name__)
+
+VALID_API_KEY = settings.API_ACCESS_KEY
 
 class WebApplicationFirewall:
     def __init__(self, get_response: Callable):
         self.get_response = get_response
 
-        self.sql_injection_patterns = [
+        # Patterns to detect SQL injection
+        self.sql_patterns = [
             r"(?i)\bselect\b.*\bfrom\b",
             r"(?i)\binsert\b.*\binto\b",
             r"(?i)\bunion\b.*\bselect\b",
@@ -20,6 +24,7 @@ class WebApplicationFirewall:
             r"(?i)\bdelete\b.*\bfrom\b",
         ]
 
+        # Patterns to detect XSS
         self.xss_patterns = [
             r"(?i)<script.*?>.*?</script.*?>",
             r"(?i)javascript:",
@@ -27,68 +32,81 @@ class WebApplicationFirewall:
             r"(?i)<iframe.*?>.*?</iframe.*?>",
         ]
 
-        self.bad_user_agents = [
+        # Known malicious user agents
+        self.blocked_agents = [
             "sqlmap", "nikto", "acunetix", "nessus", "fuzz", "scanner", "bot", "curl", "wget"
         ]
 
+        # Only allow common HTTP methods
         self.allowed_methods = {"GET", "POST", "HEAD", "OPTIONS", "PUT", "DELETE", "PATCH"}
 
     def is_suspicious(self, text: str, patterns: list[str]) -> bool:
-        for pattern in patterns:
-            if re.search(pattern, text):
-                return True
-        return False
+        return any(re.search(pattern, text) for pattern in patterns)
 
-    def log_blocked_attempt(self, request, reason):
+    def log_block(self, request, reason):
         ip = request.META.get("REMOTE_ADDR", "unknown")
         ua = request.META.get("HTTP_USER_AGENT", "unknown")
-        logger.warning(f"Blocked IP: {ip} | UA: {ua} | Reason: {reason}")
+        logger.warning(f"Blocked: IP={ip} | UA={ua} | Reason={reason}")
 
     def __call__(self, request):
-        # ✅ Allow only valid HTTP methods
+        # ❌ Block unsupported HTTP methods
         if request.method not in self.allowed_methods:
-            self.log_blocked_attempt(request, "Invalid HTTP Method")
+            self.log_block(request, "Invalid HTTP method")
             return HttpResponseForbidden("403 Forbidden")
 
-        # ✅ Analyze GET and body payload for threats
-        payload = ""
+        # # 🚨 Check payload for SQL/XSS
         try:
-            payload += request.GET.urlencode()
-            if hasattr(request, 'body'):
-                payload += request.body.decode(errors='ignore')
+            payload = request.GET.urlencode()
+            if hasattr(request, "body"):
+                payload += request.body.decode(errors="ignore")
         except Exception:
-            pass
+            payload = ""
 
-        if self.is_suspicious(payload, self.sql_injection_patterns):
-            self.log_blocked_attempt(request, "SQL Injection")
+        if self.is_suspicious(payload, self.sql_patterns):
+            self.log_block(request, "SQL Injection")
             return HttpResponseForbidden("403 Forbidden")
 
         if self.is_suspicious(payload, self.xss_patterns):
-            self.log_blocked_attempt(request, "XSS Attempt")
+            self.log_block(request, "XSS Attack")
             return HttpResponseForbidden("403 Forbidden")
 
-        # ✅ Block bad User-Agent headers
-        ua = request.META.get("HTTP_USER_AGENT", "").lower()
-        if self.is_suspicious(ua, self.bad_user_agents):
-            self.log_blocked_attempt(request, "Bad User-Agent")
+        # ❌ Block bad User-Agent strings
+        user_agent = request.META.get("HTTP_USER_AGENT", "").lower()
+        if self.is_suspicious(user_agent, self.blocked_agents):
+            self.log_block(request, "Malicious User-Agent")
             return HttpResponseForbidden("403 Forbidden")
 
-        # ✅ Time-limited access for unauthenticated users
+        # ⏳ Limit anonymous access time
         if not request.user.is_authenticated:
-            session = request.session
-            now_time = now()
-
-            if "first_seen" not in session:
-                session["first_seen"] = now_time.isoformat()
+            limit = 10
+            last_limit = 0
+            
+            while (limit != 0):
+                limit -= 1
+                last_limit += 1
+                
+                print(f"""
+                      
+                      limit {limit}
+                      last_limit {last_limit}
+                      
+                      """)
+            
+            #     try:
+            #         first_seen = datetime.datetime.fromisoformat(session["first_seen"])
+            #         if (now_time - first_seen).total_seconds() > 60:
+            #             self.log_block(request, "Anonymous time limit exceeded")
+            #             return HttpResponseForbidden("403 Forbidden")
+            #     except Exception:
+            #         self.log_block(request, "Invalid session timestamp")
+            #         return HttpResponseForbidden("403 Forbidden")
+        if request.user.is_anonymous:
+            api_key = request.META.get("HTTP_X_APP_TOKEN")
+    
+            if api_key != VALID_API_KEY:
+                self.log_block(request, "Anonymous access without valid Token")
+                return HttpResponseForbidden("Invalid API Key")
             else:
-                try:
-                    first_seen = datetime.datetime.fromisoformat(session["first_seen"])
-                    if (now_time - first_seen).total_seconds() > 60:
-                        self.log_blocked_attempt(request, "Time-limited access expired")
-                        return HttpResponseForbidden("403 Forbidden")
-                except Exception:
-                    self.log_blocked_attempt(request, "Session tampering")
-                    return HttpResponseForbidden("403 Forbidden")
+                logger.info("✅ Authenticated via API key.")
 
-        # ✅ Let the request proceed
         return self.get_response(request)
