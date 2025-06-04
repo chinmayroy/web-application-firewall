@@ -10,10 +10,8 @@ Django middleware to protect your app from SQL Injection, XSS, protocol anomalie
 - Bad bot and scanner filtering
 
 ## Installation
-
 ```
 pip install web-application-firewall
-
 ```
 ## Usage
 Add to your Django settings.py:

@@ -1,0 +1,10 @@
+LICENSE
+README.md
+setup.py
+waf/__init__.py
+waf/middleware.py
+web_application_firewall.egg-info/PKG-INFO
+web_application_firewall.egg-info/SOURCES.txt
+web_application_firewall.egg-info/dependency_links.txt
+web_application_firewall.egg-info/requires.txt
+web_application_firewall.egg-info/top_level.txt

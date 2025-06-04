@@ -1,0 +1,23 @@
+Metadata-Version: 2.4
+Name: web-application-firewall
+Version: 0.1.0
+Summary: Django middleware Web Application Firewall
+Home-page: https://github.com/chinmayroy/web-application-firewall
+Author: Chinmay Roy
+Author-email: chinmayroycom@gmail.com
+Keywords: django waf firewall security middleware
+Classifier: Framework :: Django
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+License-File: LICENSE
+Requires-Dist: Django>=3.2
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
